@@ -7,6 +7,7 @@ function pose(f){
  if(f.transforming>0)return 8;
  if(f.stun>0)return f.blocked?11:14;
  if(f.attack){const {kind,t}=f.attack;
+  if(f.attack.sniper)return t<.45?8:t<.55?9:10;
   if(kind==='light')return t<.09?4:t<.19?5:4;
   if(kind==='heavy')return t<.16?6:t<.29?7:6;
   return t<.16?8:t<.35?9:10;
