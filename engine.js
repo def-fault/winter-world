@@ -18,6 +18,7 @@ const zombie={...roster[4],name:'바이올로지 좀비',height:290,speed:325,po
 const forms={0:golem,2:angel,3:devil,4:zombie,5:chemical,6:slime};
 const canTransform=id=>id===1||!!forms[id];
 function resolveFormId(f,opponent){if(f.id!==1)return forms[f.id]?f.id:null;const id=opponent?.formTime>0?opponent.formId:opponent?.id;return forms[id]?id:null;}
+const normalRange=(type,kind)=>kind==='heavy'?(type==='fencing'?275:205):(type==='fencing'?225:155);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 class Match{
  constructor(a,b,mode='cpu',difficulty=1){this.mode=mode;this.difficulty=difficulty;this.wins=[0,0];this.round=0;this.events=[];this.ids=[a,b];this.reset();}
@@ -53,9 +54,9 @@ class Match{
   const input={},move=dir=>{input.left=dir<0;input.right=dir>0;};
   const retreat=()=>{const next=f.x-toward*65;if(next>80&&next<1120)move(-toward);else input.guard=true;};
   const ranged=['toxic','ice','time','bomb','fusion','sniper','chemical'].includes(f.c.type);
-  const ready=f.meter>=35,normalReach=f.c.type==='fencing'?210:153;
+  const ready=f.meter>=35,normalReach=normalRange(f.c.type,'heavy')-12,lightReach=normalRange(f.c.type,'light')-12;
   const end=t.attack?(t.attack.sniper?.55:t.attack.kind==='light'?.19:t.attack.kind==='heavy'?.29:.35):0;
-  const reach=t.attack?(t.attack.sniper?1000:t.attack.kind==='light'?125:t.attack.kind==='heavy'?165:['arc','nitro','fencing'].includes(t.c.type)?245:210):0;
+  const reach=t.attack?(t.attack.sniper?1000:['light','heavy'].includes(t.attack.kind)?normalRange(t.attack.type||t.c.type,t.attack.kind):['arc','nitro','fencing'].includes(t.c.type)?245:210):0;
   const danger=t.attack&&t.attack.t<end&&d<reach+28&&aligned;
   const incoming=this.shots.some(s=>this.fighters[s.owner]!==f&&(f.x-s.x)*s.dir>0&&Math.abs(f.x-s.x)<s.speed*.38&&Math.abs(f.y+100-s.y)<110);
   if(f.stun>0){f.aiState='피격';}
@@ -68,13 +69,13 @@ class Match{
   }else{
    const punish=t.attack&&t.attack.t>=end;
    const roll=Math.random();
-   if(punish&&d<normalReach){input[d<110?'light':'heavy']=true;f.aiState='빈틈 반격';}
+   if(punish&&d<normalReach){input[d<lightReach?'light':'heavy']=true;f.aiState='빈틈 반격';}
    else if(d<90){if(roll<.45){input.light=true;f.aiState='근접 견제';}else{retreat();f.aiState='거리 벌리기';}}
    else if(ready&&ranged&&d>=245&&d<=(f.c.type==='sniper'?950:f.c.type==='chemical'?380:570)&&roll<.65){input.special=true;f.aiState='원거리 견제';}
    else if(ready&&!ranged&&d>175&&d<(['arc','nitro','fencing'].includes(f.c.type)?230:300)&&roll<.38){input.special=true;f.aiState='진입 공격';}
-   else if(d<normalReach&&roll<.65){input[d<(f.c.type==='fencing'?170:112)?'light':'heavy']=true;f.aiState='사거리 견제';}
+   else if(d<normalReach&&roll<.65){input[d<lightReach?'light':'heavy']=true;f.aiState='사거리 견제';}
    else{
-    const ideal=ranged&&ready?(f.c.type==='sniper'?500:f.c.type==='chemical'?290:330):f.c.type==='fencing'?190:145;
+    const ideal=ranged&&ready?(f.c.type==='sniper'?500:f.c.type==='chemical'?290:330):normalRange(f.c.type,'heavy')-20;
     if(d>ideal+35){move(toward);f.aiState='접근';}
     else if(d<ideal-30){retreat();f.aiState='거리 벌리기';}
     else{f.aiState='거리 유지';if(roll<.15)retreat();}
@@ -98,7 +99,7 @@ class Match{
  if(!f.stun&&!f.attack&&!f.transforming){if(!f.guard)f.x+=((input.right?1:0)-(input.left?1:0))*f.c.speed*(f.slow>0?.5:1)*dt;if(input.jump&&f.y===0&&!f.guard)f.vy=630;if(input.special)this.attack(f,'special');else if(input.heavy)this.attack(f,'heavy');else if(input.light)this.attack(f,'light');}
  f.y=Math.max(0,f.y+f.vy*dt);f.vy-=1650*dt;if(f.y===0){f.vy=0;if(oldY>0)f.landing=.09;}
  if(f.attack){const a=f.attack;a.t+=dt;const special=a.kind==='special',type=a.type||f.c.type;const rush=special&&(type==='rush'||type==='dash'||type==='fencing'||type==='biology');if(rush&&a.t<.3)f.x+=f.face*700*dt;
- if(!a.hit&&a.t>(a.sniper?.45:a.kind==='light'?.09:.16)&&a.t<(a.sniper?.55:a.kind==='light'?.19:a.kind==='heavy'?.29:.35)){const projectile=special&&['toxic','ice','bomb','time','fusion','sniper','chemical'].includes(type);if(projectile){this.shots.push({owner:i,x:f.x+f.face*(a.sniper?105:50),y:f.y+(a.sniper?f.c.height*.55:type==='chemical'?f.c.height*.5:100),dir:f.face,life:type==='chemical'?.7:2,speed:type==='chemical'?480:type==='sniper'?1600:type==='bomb'?410:540,type,color:f.c.color,damage:(type==='sniper'?32:type==='chemical'?20:type==='fusion'?25:type==='bomb'?24:18)*a.power});if(a.sniper)this.events.push({type:'snipe',x:f.x,y:544-f.y-f.c.height*.55,color:f.c.color,dir:f.face});a.hit=true;}else{const range=special?(['arc','nitro','fencing'].includes(type)?245:180):a.kind==='heavy'?(type==='fencing'?220:165):(type==='fencing'?180:125);if(Math.abs(t.x-f.x)<range&&Math.abs(t.y-f.y)<105&&(t.x-f.x)*f.face>=0){this.hit(f,t,(special?23:a.kind==='heavy'?15:8)*a.power,type,f.face,a.kind);a.hit=true;}}}
+ if(!a.hit&&a.t>(a.sniper?.45:a.kind==='light'?.09:.16)&&a.t<(a.sniper?.55:a.kind==='light'?.19:a.kind==='heavy'?.29:.35)){const projectile=special&&['toxic','ice','bomb','time','fusion','sniper','chemical'].includes(type);if(projectile){this.shots.push({owner:i,x:f.x+f.face*(a.sniper?105:50),y:f.y+(a.sniper?f.c.height*.55:type==='chemical'?f.c.height*.5:100),dir:f.face,life:type==='chemical'?.7:2,speed:type==='chemical'?480:type==='sniper'?1600:type==='bomb'?410:540,type,color:f.c.color,damage:(type==='sniper'?32:type==='chemical'?20:type==='fusion'?25:type==='bomb'?24:18)*a.power});if(a.sniper)this.events.push({type:'snipe',x:f.x,y:544-f.y-f.c.height*.55,color:f.c.color,dir:f.face});a.hit=true;}else{const range=special?(['arc','nitro','fencing'].includes(type)?245:180):normalRange(type,a.kind);if(Math.abs(t.x-f.x)<range&&Math.abs(t.y-f.y)<105&&(t.x-f.x)*f.face>=0){this.hit(f,t,(special?23:a.kind==='heavy'?15:8)*a.power,type,f.face,a.kind);a.hit=true;}}}
  if(a.t>(a.sniper?.95:special?.55:a.kind==='heavy'?.48:.32))f.attack=null;}
  f.x=clamp(f.x,65,1135);f.moving=Math.abs(f.x-oldX)>.1&&!f.attack&&!f.stun;
  });
@@ -107,5 +108,5 @@ class Match{
  if(a.hp<=0||b.hp<=0||this.time<=0){const va=a.hp/a.c.hp,vb=b.hp/b.c.hp;this.winner=Math.abs(va-vb)<.00001?-1:va>vb?0:1;if(this.winner>=0)this.wins[this.winner]++;this.phase=this.wins.some(w=>w>=2)?'finished':'round';this.events.push({type:'finish'});}
  }
 }
-const api={roster,golem,slime,angel,devil,chemical,zombie,forms,canTransform,resolveFormId,Match};if(typeof module!=='undefined')module.exports=api;root.WinterFight=api;
+const api={roster,golem,slime,angel,devil,chemical,zombie,forms,canTransform,resolveFormId,normalRange,Match};if(typeof module!=='undefined')module.exports=api;root.WinterFight=api;
 })(typeof window!=='undefined'?window:globalThis);
