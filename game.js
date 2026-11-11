@@ -1,17 +1,20 @@
 'use strict';
 const {roster,forms,canTransform,resolveFormId,Match}=WinterFight,$=id=>document.getElementById(id),canvas=$('canvas'),ctx=canvas.getContext('2d');
 let chosen=[4,3],picking=0,match=null,paused=false,last=0,fx=[],shake=0,sound=true,audio=null,clock=0;
+let resultDue=0;
 const keys=new Set(),pressed=new Set(),images=roster.map((_,i)=>{const im=new Image();im.src=`assets/sprites/fighter-${i}.png`;return im;});
 const golemImage=new Image();golemImage.src='assets/sprites/atomic-golem.png';
 const slimeImage=new Image();slimeImage.src='assets/sprites/nitro-slime.png';
 const angelImage=new Image();angelImage.src='assets/sprites/bullet-angel.png';
 const devilImage=new Image();devilImage.src='assets/sprites/fencing-devil.png';
-const formImages={0:golemImage,2:angelImage,3:devilImage,6:slimeImage},formAtlases={0:GOLEM_ATLAS,2:ANGEL_ATLAS,3:DEVIL_ATLAS,6:SLIME_ATLAS};
+const chemicalImage=new Image();chemicalImage.src='assets/sprites/chemical-dragon.png';
+const zombieImage=new Image();zombieImage.src='assets/sprites/biology-zombie.png';
+const formImages={0:golemImage,2:angelImage,3:devilImage,4:zombieImage,5:chemicalImage,6:slimeImage},formAtlases={0:GOLEM_ATLAS,2:ANGEL_ATLAS,3:DEVIL_ATLAS,4:ZOMBIE_ATLAS,5:CHEMICAL_ATLAS,6:SLIME_ATLAS};
 Promise.all([...images,...Object.values(formImages)].map(im=>new Promise((resolve,reject)=>{if(im.complete&&im.naturalWidth)resolve();else{im.onload=resolve;im.onerror=reject;}}))).then(()=>{$('start').disabled=false;$('start').textContent='대전 시작  →';}).catch(()=>{$('start').textContent='이미지 로드 실패 · assets 폴더를 확인하세요';});
 function selectUI(){
  $('roster').innerHTML=roster.map((c,i)=>`<button class="card ${chosen[0]===i?'selected':''} ${chosen[1]===i?'enemy':''}" style="--c:${c.color}" aria-label="${c.name} 선택" aria-pressed="${chosen[picking]===i}" data-id="${i}"><span class="number">0${i+1}</span>${chosen.includes(i)?`<span class="badge">${chosen[0]===i?'P1':''}${chosen[0]===i&&chosen[1]===i?' / ':''}${chosen[1]===i?'P2':''}</span>`:''}<img src="assets/fighter-${i}.png?v=49f7f1b3171d" alt=""><span class="label"><small>${c.tag}</small>${c.name}</span></button>`).join('');
  $('roster').querySelectorAll('button').forEach(b=>b.onclick=()=>{chosen[picking]=Number(b.dataset.id);selectUI();});
- const c=roster[chosen[picking]];$('profile-tag').textContent=c.tag+' / '+c.skill;$('profile-name').textContent=c.name;$('profile-desc').textContent=c.desc+(chosen[picking]===0?' 변신: 아토믹 골렘 · I키 · 12초간 공격 강화 / 받는 피해 감소.':chosen[picking]===1?' 변신: 드레인 미믹 · I키 · 상대의 변신폼 외형과 기술을 그대로 복사합니다. 상대가 아직 변신하지 않아도 복사할 수 있습니다.':chosen[picking]===2?' 변신: 불릿 엔젤 · I키 · 조준 후 고속 저격탄을 발사합니다.':chosen[picking]===3?' 변신: 펜싱 데빌 · I키 · 방어 시작 순간 패링, 성공 후 다음 공격 강화.':chosen[picking]===6?' 변신: 니트로 슬라임 · I키 · 쿼드루페데즈 적중 후 지연 폭발.':'');
+ const c=roster[chosen[picking]];$('profile-tag').textContent=c.tag+' / '+c.skill;$('profile-name').textContent=c.name;$('profile-desc').textContent=c.desc+(chosen[picking]===0?' 변신: 아토믹 골렘 · I키 · 12초간 공격 강화 / 받는 피해 감소.':chosen[picking]===1?' 변신: 드레인 미믹 · I키 · 상대의 변신폼 외형과 기술을 그대로 복사합니다. 상대가 아직 변신하지 않아도 복사할 수 있습니다.':chosen[picking]===2?' 변신: 불릿 엔젤 · I키 · 조준 후 고속 저격탄을 발사합니다.':chosen[picking]===3?' 변신: 펜싱 데빌 · I키 · 방어 시작 순간 패링, 성공 후 다음 공격 강화.':chosen[picking]===4?' 변신: 바이올로지 좀비 · I키 · 돌진 공격, 피격을 피하면 제한된 체력을 재생합니다.':chosen[picking]===5?' 변신: 케미컬 드래곤 · I키 · 중거리 화학 브레스로 지속 부식 피해를 줍니다.':chosen[picking]===6?' 변신: 니트로 슬라임 · I키 · 쿼드루페데즈 적중 후 지연 폭발.':'');
  $('stats').innerHTML=[['공격',c.power/1.3],['속도',c.speed/360],['체력',c.hp/130]].map(([n,v])=>`<span>${n}<i><b style="width:${v*100}%"></b></i></span>`).join('');
  $('versus').textContent=`P1 ${roster[chosen[0]].name}  /  P2 ${roster[chosen[1]].name}`;
  $('pick-label').textContent=picking?'상대 캐릭터 선택':'플레이어 캐릭터 선택';$('pick-toggle').textContent=picking?'← 플레이어 선택하기':'상대 선택하기 →';
@@ -19,13 +22,13 @@ function selectUI(){
 $('pick-toggle').onclick=()=>{picking=1-picking;selectUI();};$('mode').onchange=()=>{$('difficulty-label').style.visibility=$('mode').value==='cpu'?'visible':'hidden';};
 function tone(freq,duration=.08,type='sine',volume=.035){if(!sound)return;try{audio ||=new (window.AudioContext||window.webkitAudioContext)();audio.resume();const o=audio.createOscillator(),g=audio.createGain();o.type=type;o.frequency.setValueAtTime(freq,audio.currentTime);o.frequency.exponentialRampToValueAtTime(Math.max(30,freq*.4),audio.currentTime+duration);g.gain.setValueAtTime(volume,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+duration);o.connect(g);g.connect(audio.destination);o.start();o.stop(audio.currentTime+duration);}catch{}}
 $('sound').onclick=()=>{sound=!sound;$('sound').textContent=`사운드 ${sound?'ON':'OFF'}`;tone(600);};
-function start(){if($('mode').value==='online')return;document.querySelector('.controls>div:nth-child(2)').hidden=false;document.querySelector('.controls>div:first-child>b').textContent='PLAYER 1';tone(180,.05);match=new Match(...chosen,$('mode').value,Number($('difficulty').value));paused=false;fx=[];keys.clear();pressed.clear();$('select').hidden=true;$('game').hidden=false;$('overlay').hidden=true;$('p2-label').textContent=match.mode==='cpu'?'CPU OPPONENT':'PLAYER 2';tone(700,.2);}
+function start(){if($('mode').value==='online')return;document.querySelector('.controls>div:nth-child(2)').hidden=false;document.querySelector('.controls>div:first-child>b').textContent='PLAYER 1';tone(180,.05);match=new Match(...chosen,$('mode').value,Number($('difficulty').value));paused=false;fx=[];resultDue=0;keys.clear();pressed.clear();$('select').hidden=true;$('game').hidden=false;$('overlay').hidden=true;$('p2-label').textContent=match.mode==='cpu'?'CPU OPPONENT':'PLAYER 2';tone(700,.2);}
 $('start').onclick=start;
-function back(){if(online.active)leaveOnline();match=null;keys.clear();pressed.clear();$('game').hidden=true;$('select').hidden=false;$('overlay').hidden=true;selectUI();}
+function back(){if(online.active)leaveOnline();match=null;resultDue=0;keys.clear();pressed.clear();$('game').hidden=true;$('select').hidden=false;$('overlay').hidden=true;selectUI();}
 $('back').onclick=back;$('return').onclick=back;
 function overlay(tag,title,desc,label){$('overlay').hidden=false;$('result-tag').textContent=tag;$('result-title').textContent=title;$('result-desc').textContent=desc;$('continue').textContent=label;}
 function pause(){if(online.active)return;if(!match||!['intro','fight'].includes(match.phase))return;paused=!paused;keys.clear();pressed.clear();if(paused)overlay('TIME OUT','잠시 쉬어가기','준비가 되면 전장으로 돌아오세요.','계속하기');else $('overlay').hidden=true;}
-$('pause').onclick=pause;$('continue').onclick=()=>{if(online.active){online.send({type:'ready'});$('continue').disabled=true;$('continue').textContent='상대 준비를 기다리는 중…';return;}if(paused){pause();return;}if(match.phase==='finished')start();else{match.reset();fx=[];$('overlay').hidden=true;}};
+$('pause').onclick=pause;$('continue').onclick=()=>{if(online.active){online.send({type:'ready'});$('continue').disabled=true;$('continue').textContent='상대 준비를 기다리는 중…';return;}if(paused){pause();return;}if(match.phase==='finished')start();else{match.reset();resultDue=0;fx=[];$('overlay').hidden=true;}};
 const gameKeys=['KeyA','KeyD','KeyW','KeyS','KeyJ','KeyK','KeyL','KeyI','Digit0','Numpad0','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Digit1','Digit2','Digit3','Numpad1','Numpad2','Numpad3'];
 window.addEventListener('keydown',e=>{if(!match)return;if(gameKeys.includes(e.code)||e.code==='Escape')e.preventDefault();if(e.code==='Escape'&&!e.repeat){pause();return;}if(!keys.has(e.code))pressed.add(e.code);keys.add(e.code);});window.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('blur',()=>{keys.clear();pressed.clear();if(online.active)online.input({},true);if(match&&!paused&&['intro','fight'].includes(match.phase))pause();});
 function inputs(){return[{left:keys.has('KeyA'),right:keys.has('KeyD'),jump:pressed.has('KeyW'),guard:keys.has('KeyS'),light:pressed.has('KeyJ'),heavy:pressed.has('KeyK'),transform:pressed.has('KeyI'),special:pressed.has('KeyL')},{left:keys.has('ArrowLeft'),right:keys.has('ArrowRight'),jump:pressed.has('ArrowUp'),guard:keys.has('ArrowDown'),light:pressed.has('Digit1')||pressed.has('Numpad1'),heavy:pressed.has('Digit2')||pressed.has('Numpad2'),transform:pressed.has('Digit0')||pressed.has('Numpad0'),special:pressed.has('Digit3')||pressed.has('Numpad3')}];}
@@ -43,7 +46,8 @@ function background(){const g=ctx.createLinearGradient(0,0,0,650);g.addColorStop
 }
 function fighter(f,i){const im=f.formTime>0?formImages[f.formId]:images[f.id],h=f.c.height;const foot=544-f.y;
  ctx.fillStyle='#04101d66';ctx.beginPath();ctx.ellipse(f.x,549,Math.max(20,h*.19-f.y*.08),10,0,0,7);ctx.fill();
- const pose=FighterAnimation.pose(f);
+ const defeated=['round','finished'].includes(match.phase)&&match.winner>=0&&match.winner!==i;
+ const pose=defeated?15:FighterAnimation.pose(f);
  ctx.save();if(f.flash>0)ctx.filter="brightness(2.3) saturate(.35)";FighterAnimation.draw(ctx,im,(f.formTime>0?formAtlases[f.formId]:SPRITE_ATLASES[f.id]),pose,f.x,foot,h,f.face);ctx.restore();
  if(f.formTime>0&&f.c.type==='fusion'){ctx.save();ctx.globalAlpha=.45+.2*Math.sin(clock*10);ctx.strokeStyle='#ffe670';ctx.lineWidth=f.transforming?8:2;ctx.beginPath();ctx.ellipse(f.x,foot-h*.53,45+Math.sin(clock*7)*6,55,0,0,Math.PI*2);ctx.stroke();ctx.restore();}
  if(f.guard){ctx.strokeStyle='#a6eeff';ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(f.x+f.face*35,foot-h*.45,h*.18,h*.42,0,-Math.PI/2,Math.PI/2);ctx.stroke();text('GUARD',f.x,foot-h-12,11,'#a6eeff','center');}
@@ -51,6 +55,8 @@ function fighter(f,i){const im=f.formTime>0?formImages[f.formId]:images[f.id],h=
  if(f.attack?.type==='fencing'&&f.attack.t>=(f.attack.kind==='light'?.09:.16)&&f.attack.t<.29){const reach=f.attack.kind==='light'?180:f.attack.kind==='heavy'?220:245;line(f.x+f.face*40,foot-h*.5,f.x+f.face*reach,foot-h*.5,'#ffe3ee',4);text(f.attack.kind==='special'?f.c.skill:'',f.x,foot-h-25,16,f.c.color,'center');}
  if(f.attack&&f.attack.type!=='fencing'&&!f.attack.sniper&&f.attack.t>=.09&&f.attack.t<.30){const a=f.attack;ctx.save();ctx.translate(f.x+f.face*45,foot-h*.5);ctx.scale(f.face,1);ctx.strokeStyle=f.c.color;ctx.shadowColor=f.c.color;ctx.shadowBlur=23;ctx.lineWidth=a.kind==='light'?6:12;ctx.globalAlpha=Math.max(0,1-a.t*2);ctx.beginPath();ctx.arc(0,0,a.kind==='special'?130:a.kind==='heavy'?95:62,-1.1+a.t*3,1.1+a.t*3);ctx.stroke();ctx.restore();if(a.kind==='special')text(f.c.skill,f.x,foot-h-30,18,f.c.color,'center');}
  if(f.riposte>0)text('RIPOSTE · 반격 강화',f.x,foot-h-45,14,'#ff8ca8','center');
+ if(f.corrosion>0)text('CORROSION · '+f.corrosion.toFixed(1)+'s',f.x,foot-h-60,13,'#c2fa55','center');
+ if(f.c.type==='biology'&&f.formTime>0&&f.regenDelay===0&&f.regenBudget>0&&f.hp<f.c.hp)text('REGENERATING',f.x,foot-h-20,12,'#9af5a1','center');
  if(f.nitroTime>0)text('주입 · '+f.nitroTime.toFixed(1)+'s',f.x,foot-h-30,15,'#4ff2c5','center');
  if(f.slow>0)text('SLOW',f.x,foot-h-9,12,'#7cdeff','center');if(f.poison>0)text('POISON',f.x,foot-h-25,12,'#dbec69','center');
  if(f.comboTime>0&&f.combo>1)text(`${f.combo} HITS`,i?1040:160,195,28,f.c.color,'center');
@@ -59,7 +65,7 @@ function hud(){const [a,b]=match.fighters;rect(0,0,1200,115,'#07111cd9');[a,b].f
 function draw(dt){
  ctx.save();if(shake>0){ctx.translate(Math.sin(clock*160)*shake*.65,Math.cos(clock*130)*shake*.35);shake=Math.max(0,shake-dt*75);}background();
  match.fighters.forEach(fighter);
- for(const s of match.shots){ctx.save();ctx.shadowBlur=25;ctx.shadowColor=s.color;ctx.fillStyle=s.color;ctx.beginPath();ctx.ellipse(s.x,544-s.y,s.type==='sniper'?48:s.type==='bomb'?27:33,s.type==='sniper'?3:s.type==='bomb'?27:14,0,0,7);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(s.x+s.dir*8,544-s.y,7,0,7);ctx.fill();ctx.restore();}
+ for(const s of match.shots){ctx.save();ctx.shadowBlur=25;ctx.shadowColor=s.color;ctx.fillStyle=s.color;ctx.beginPath();ctx.ellipse(s.x,544-s.y,s.type==='chemical'?44:s.type==='sniper'?48:s.type==='bomb'?27:33,s.type==='chemical'?24:s.type==='sniper'?3:s.type==='bomb'?27:14,0,0,7);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(s.x+s.dir*8,544-s.y,7,0,7);ctx.fill();ctx.restore();}
  fx=fx.filter(e=>{
   e.life-=dt;if(e.life<=0)return false;const age=.45-e.life,strong=e.strength||1;
   ctx.save();ctx.translate(e.x,e.y);ctx.globalAlpha=Math.min(1,e.life/.20);
@@ -81,18 +87,19 @@ function impactSound(e){
   tone(blocked?850:180-strength*22,duration,blocked?'triangle':'sine',blocked?.035:.10+strength*.025);
  }catch{}
 }
-function frame(now){const dt=Math.min((now-last)/1000||0,.035);last=now;if(match){if(!paused){clock+=dt;if(online.active){online.input(inputs()[0]);pressed.clear();}else{match.step(dt,inputs());if(match.hitstop<=0)pressed.clear();}for(const e of match.events){if(e.type==='snipe'){shake=10;tone(120,.18,'sawtooth',.08);}if(['transform','revert','inject','detonate','parry'].includes(e.type)){shake=e.type==='transform'?20:7;tone(e.type==='transform'?85:220,.6,'sawtooth',.06);fx.push({...e,life:.45,strength:4,damage:0});}if(e.type==='hit'||e.type==='block'){fx.push({...e,life:.45});shake=e.type==='hit'?(e.strength===1?5:e.strength===2?12:16):2;impactSound(e);}if(e.type==='swing')tone(250,.045,'sine',.012);if(e.type==='finish'){$('continue').disabled=false;const win=match.winner;overlay(match.phase==='finished'?'MATCH COMPLETE':'ROUND COMPLETE',win<0?'무승부':`${match.fighters[win].c.name} 승리`,`${match.wins[0]} : ${match.wins[1]} · ${win<0?'다시 겨뤄보세요.':'설원에 새로운 승리가 새겨졌습니다.'}`,match.phase==='finished'?'다시 대전':'다음 라운드');tone(660,.4);}}match.events=[];}draw(paused?0:dt);}requestAnimationFrame(frame);}
+function showResult(){$('continue').disabled=false;const win=match.winner;overlay(match.phase==='finished'?'MATCH COMPLETE':'ROUND COMPLETE',win<0?'무승부':`${match.fighters[win].c.name} 승리`,`${match.wins[0]} : ${match.wins[1]} · ${win<0?'다시 겨뤄보세요.':'설원에 새로운 승리가 새겨졌습니다.'}`,match.phase==='finished'?'다시 대전':'다음 라운드');}
+function frame(now){const dt=Math.min((now-last)/1000||0,.035);last=now;if(match){if(!paused){clock+=dt;if(online.active){online.input(inputs()[0]);pressed.clear();}else{match.step(dt,inputs());if(match.hitstop<=0)pressed.clear();}for(const e of match.events){if(e.type==='snipe'){shake=10;tone(120,.18,'sawtooth',.08);}if(['transform','revert','inject','detonate','parry'].includes(e.type)){shake=e.type==='transform'?20:7;tone(e.type==='transform'?85:220,.6,'sawtooth',.06);fx.push({...e,life:.45,strength:4,damage:0});}if(e.type==='hit'||e.type==='block'){fx.push({...e,life:.45});shake=e.type==='hit'?(e.strength===1?5:e.strength===2?12:16):2;impactSound(e);}if(e.type==='swing')tone(250,.045,'sine',.012);if(e.type==='finish'){resultDue=now+2000;tone(660,.4);}}match.events=[];}if(resultDue&&now>=resultDue&&['round','finished'].includes(match.phase)){resultDue=0;showResult();}draw(paused?0:dt);}requestAnimationFrame(frame);}
 selectUI();setupOnline();requestAnimationFrame(frame);
 
 function onlineMode(){const net=$('mode').value==='online';$('online-panel').hidden=!net;$('start').hidden=net;$('difficulty-label').style.visibility=$('mode').value==='cpu'?'visible':'hidden';$('pick-toggle').hidden=net;$('versus').hidden=net;if(net){picking=0;selectUI();}}
-function onlineLobby(message){match=null;paused=false;keys.clear();pressed.clear();$('game').hidden=true;$('select').hidden=false;$('overlay').hidden=true;$('pause').disabled=false;$('continue').disabled=false;$('net-latency').textContent='';if(message)$('net-status').textContent=message;}
+function onlineLobby(message){match=null;resultDue=0;paused=false;keys.clear();pressed.clear();$('game').hidden=true;$('select').hidden=false;$('overlay').hidden=true;$('pause').disabled=false;$('continue').disabled=false;$('net-latency').textContent='';if(message)$('net-status').textContent=message;}
 function leaveOnline(){online.disconnect();onlineLobby('방에서 나왔습니다.');$('net-room').hidden=true;$('net-entry').hidden=false;$('mode').disabled=false;$('net-create').disabled=false;$('net-join').disabled=false;$('roster').querySelectorAll('button').forEach(b=>b.disabled=false);}
 function setupOnline(){
  const status=t=>$('net-status').textContent=t;
  online.hooks={status,busy:v=>{$('net-create').disabled=v;$('net-join').disabled=v;$('mode').disabled=v||online.active;},
   joined:m=>{$('net-room').hidden=false;$('net-entry').hidden=true;$('net-room-code').textContent=`ROOM ${m.code}`;$('mode').disabled=true;$('roster').querySelectorAll('button').forEach(b=>b.disabled=true);status(`당신은 P${m.slot+1}입니다. 친구가 참가하면 시작합니다.`);},
   room:m=>{$('net-players').textContent=m.players.map((p,i)=>p?`P${i+1} ${roster[p.character].name} · ${p.ready?'준비 완료':'준비 중'}`:`P${i+1} 참가자 대기`).join(' / ');$('net-ready').disabled=!!m.players[online.slot]?.ready||m.running;$('net-ready').hidden=online===peerOnline;},
-  start:()=>{document.querySelector('.controls>div:nth-child(2)').hidden=true;document.querySelector('.controls>div:first-child>b').textContent=`내 캐릭터 · P${online.slot+1}`;$('net-latency').textContent=`ROOM ${online.code} · YOU P${online.slot+1}`;paused=false;fx=[];keys.clear();pressed.clear();$('overlay').hidden=true;$('continue').disabled=false;$('pause').disabled=true;$('select').hidden=true;$('game').hidden=false;$('p2-label').textContent='ONLINE · 양쪽 모두 A/D W/S J/K/L';tone(700,.2);},
+  start:()=>{document.querySelector('.controls>div:nth-child(2)').hidden=true;document.querySelector('.controls>div:first-child>b').textContent=`내 캐릭터 · P${online.slot+1}`;$('net-latency').textContent=`ROOM ${online.code} · YOU P${online.slot+1}`;paused=false;fx=[];resultDue=0;keys.clear();pressed.clear();$('overlay').hidden=true;$('continue').disabled=false;$('pause').disabled=true;$('select').hidden=true;$('game').hidden=false;$('p2-label').textContent='ONLINE · 양쪽 모두 A/D W/S J/K/L';tone(700,.2);},
   state:m=>{const pending=match?.events||[];match={...m.state,events:[...pending,...m.events]};},
   left:message=>{onlineLobby(message);$('net-ready').disabled=false;},
   closed:message=>{leaveOnline();status(message);},
