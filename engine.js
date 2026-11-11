@@ -14,11 +14,13 @@ const slime={...roster[6],name:'니트로 슬라임',height:210,speed:315,power:
 const angel={...roster[2],name:'불릿 엔젤',height:265,speed:245,power:1.15,type:'sniper',skill:'세라프 스나이프',color:'#9be9ff'};
 const devil={...roster[3],name:'펜싱 데빌',height:275,speed:350,power:1.18,type:'fencing',skill:'플뢰레 리포스트',color:'#ff668a'};
 const forms={0:golem,2:angel,3:devil,6:slime};
+const canTransform=id=>id===1||!!forms[id];
+function resolveFormId(f,opponent){if(f.id!==1)return forms[f.id]?f.id:null;const id=opponent?.formTime>0?opponent.formId:opponent?.id;return forms[id]?id:null;}
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 class Match{
  constructor(a,b,mode='cpu',difficulty=1){this.mode=mode;this.difficulty=difficulty;this.wins=[0,0];this.round=0;this.events=[];this.ids=[a,b];this.reset();}
- reset(){this.round++;this.time=60;this.phase='intro';this.wait=2;this.hitstop=0;this.shots=[];this.events=[];this.fighters=this.ids.map((id,i)=>({id,c:roster[id],x:i?870:330,y:0,vy:0,face:i?-1:1,hp:roster[id].hp,meter:35,beast:40,formTime:0,transforming:0,nitroTime:0,nitroOwner:null,parryTime:0,parryCooldown:0,riposte:0,cd:0,stun:0,slow:0,poison:0,guard:false,attack:null,combo:0,comboTime:0,ai:0,vx:0,flash:0,aiHold:{},aiState:'거리 탐색',animTime:0,moving:false,landing:0,blocked:false}));}
- transform(f){if(this.phase!=='fight'||!forms[f.id]||f.formTime>0||f.beast<100||f.stun>0||f.attack||f.cd>0||f.y>0||f.hp<=0)return false;f.beast=0;f.formTime=12;f.transforming=.65;f.c=forms[f.id];f.guard=false;f.vx=0;this.events.push({type:'transform',x:f.x,y:544-f.y-175,color:f.c.color,name:f.c.name});return true;}
+ reset(){this.round++;this.time=60;this.phase='intro';this.wait=2;this.hitstop=0;this.shots=[];this.events=[];this.fighters=this.ids.map((id,i)=>({id,c:roster[id],x:i?870:330,y:0,vy:0,face:i?-1:1,hp:roster[id].hp,meter:35,beast:40,formTime:0,formId:null,transforming:0,nitroTime:0,nitroOwner:null,parryTime:0,parryCooldown:0,riposte:0,cd:0,stun:0,slow:0,poison:0,guard:false,attack:null,combo:0,comboTime:0,ai:0,vx:0,flash:0,aiHold:{},aiState:'거리 탐색',animTime:0,moving:false,landing:0,blocked:false}));}
+ transform(f){const opponent=this.fighters.find(other=>other!==f),formId=resolveFormId(f,opponent);if(this.phase!=='fight'||formId===null||f.formTime>0||f.beast<100||f.stun>0||f.attack||f.cd>0||f.y>0||f.hp<=0)return false;f.beast=0;f.formTime=12;f.transforming=.65;f.formId=formId;f.c={...forms[formId],hp:roster[f.id].hp};f.guard=false;f.vx=0;this.events.push({type:'transform',x:f.x,y:544-f.y-175,color:f.c.color,name:f.id===1?'드레인 미믹 · '+f.c.name:f.c.name});return true;}
  attack(f,kind){if(f.cd>0||f.stun>0||f.guard||f.transforming>0)return false;const special=kind==='special';if(special&&f.meter<35)return false;if(special)f.meter-=35;const sniper=special&&f.c.type==='sniper';f.attack={kind,t:0,hit:false,sniper,type:f.c.type,power:f.c.power*(f.riposte>0?1.35:1)};f.riposte=0;f.cd=sniper?1.25:special?.8:kind==='heavy'?.57:.34;this.events.push({type:'swing',kind});return true;}
  hit(f,t,damage,kind,dir,impact='special'){
   if(t.hp<=0)return;
@@ -27,9 +29,9 @@ class Match{
   if(blocked&&t.c.type==='fencing'&&t.parryTime>0&&melee){t.parryTime=0;t.riposte=1.1;f.stun=.34;f.attack=null;f.vx=-dir*160;this.hitstop=.09;this.events.push({type:'parry',x:t.x-dir*30,y:544-t.y-t.c.height*.55,color:t.c.color});return;}
   const counter=!blocked&&!!t.attack&&t.attack.t<(t.attack.sniper?.45:t.attack.kind==='light'?.09:.16);
   const strength=impact==='light'?1:impact==='heavy'?2:3;
-  const dealt=damage*(blocked?.15:counter?1.15:1)*(t.formTime>0&&t.id===0?.8:1);
+  const dealt=damage*(blocked?.15:counter?1.15:1)*(t.formTime>0&&t.c.type==='fusion'?.8:1);
   t.hp=Math.max(0,t.hp-dealt);
-  if(!!forms[f.id]&&!f.formTime)f.beast=clamp(f.beast+(blocked?4:13),0,100);if(!!forms[t.id]&&!t.formTime)t.beast=clamp(t.beast+dealt*.7,0,100);
+  if(canTransform(f.id)&&!f.formTime)f.beast=clamp(f.beast+(blocked?4:13),0,100);if(canTransform(t.id)&&!t.formTime)t.beast=clamp(t.beast+dealt*.7,0,100);
   t.vx=dir*(blocked?100:strength===1?210:strength===2?430:530);
   f.vx=-dir*(blocked?65:strength===1?25:45);
   t.stun=blocked?.12:(strength===1?.19:strength===2?.32:.40)+(counter?.07:0);
@@ -78,12 +80,12 @@ class Match{
   }
   // Movement/guard persist between decisions; attacks are single pulses.
   f.aiHold={left:!!input.left,right:!!input.right,guard:!!input.guard};
-  if(forms[f.id]&&f.beast>=100&&!f.formTime&&d>200)input.transform=true;
+  if(resolveFormId(f,t)!==null&&f.beast>=100&&!f.formTime&&d>200)input.transform=true;
   return input;
  }
  step(dt,inputs=[{},{}]){dt=Math.min(dt,.035);if(this.phase==='intro'){this.wait-=dt;if(this.wait<=0)this.phase='fight';return;}if(this.phase!=='fight')return;if(this.hitstop>0){this.hitstop=Math.max(0,this.hitstop-dt);return;}this.time=Math.max(0,this.time-dt);
  this.fighters.forEach((f,i)=>{const t=this.fighters[1-i],input=this.mode==='cpu'&&i===1?this.aiInput(f,t,dt):(inputs[i]||{});const oldX=f.x,oldY=f.y;f.animTime+=dt;
- if(f.formTime>0){f.formTime=Math.max(0,f.formTime-dt);if(!f.formTime){f.c=roster[f.id];f.transforming=0;f.parryTime=0;f.riposte=0;this.events.push({type:'revert',x:f.x,y:544-f.y-150,color:'#c2e7ff'});}}else if(forms[f.id])f.beast=clamp(f.beast+dt*3,0,100);
+ if(f.formTime>0){f.formTime=Math.max(0,f.formTime-dt);if(!f.formTime){f.c=roster[f.id];f.formId=null;f.transforming=0;f.parryTime=0;f.riposte=0;this.events.push({type:'revert',x:f.x,y:544-f.y-150,color:'#c2e7ff'});}}else if(canTransform(f.id))f.beast=clamp(f.beast+dt*3,0,100);
  if(f.nitroTime>0){f.nitroTime=Math.max(0,f.nitroTime-dt);if(!f.nitroTime&&f.hp>0){const owner=this.fighters[f.nitroOwner];this.hit(owner,f,18,'detonation',f.x>=owner.x?1:-1,'special');this.events.push({type:'detonate',x:f.x,y:544-f.y-f.c.height*.55,color:slime.color});f.nitroOwner=null;}}
  f.parryTime=Math.max(0,f.parryTime-dt);f.parryCooldown=Math.max(0,f.parryCooldown-dt);f.riposte=Math.max(0,f.riposte-dt);
  f.transforming=Math.max(0,f.transforming-dt);f.flash=Math.max(0,f.flash-dt);f.x+=f.vx*dt;f.vx*=Math.exp(-11*dt);f.landing=Math.max(0,f.landing-dt);f.cd=Math.max(0,f.cd-dt);f.stun=Math.max(0,f.stun-dt);f.slow=Math.max(0,f.slow-dt);f.comboTime-=dt;f.meter=clamp(f.meter+dt*2,0,100);if(f.poison>0){f.poison-=dt;f.hp=Math.max(1,f.hp-dt*2);}f.face=t.x>=f.x?1:-1;const wasGuard=f.guard;f.guard=!!input.guard&&f.y===0&&!f.attack&&f.stun===0&&!f.transforming;if(f.guard&&!wasGuard&&f.c.type==='fencing'&&f.parryCooldown===0){f.parryTime=.16;f.parryCooldown=.7;}
@@ -100,5 +102,5 @@ class Match{
  if(a.hp<=0||b.hp<=0||this.time<=0){const va=a.hp/a.c.hp,vb=b.hp/b.c.hp;this.winner=Math.abs(va-vb)<.00001?-1:va>vb?0:1;if(this.winner>=0)this.wins[this.winner]++;this.phase=this.wins.some(w=>w>=2)?'finished':'round';this.events.push({type:'finish'});}
  }
 }
-const api={roster,golem,slime,angel,devil,forms,Match};if(typeof module!=='undefined')module.exports=api;root.WinterFight=api;
+const api={roster,golem,slime,angel,devil,forms,canTransform,resolveFormId,Match};if(typeof module!=='undefined')module.exports=api;root.WinterFight=api;
 })(typeof window!=='undefined'?window:globalThis);
