@@ -20,6 +20,6 @@ const socketOnline={
   ws.onclose=()=>{if(this.socket!==ws)return;this.disconnect();this.hooks.closed('연결이 끊겼습니다. 방 코드로 다시 참가할 수 있습니다.');};
   this.watchdog=setInterval(()=>{if(Date.now()-this.lastMessage>8000){this.disconnect();this.hooks.closed('서버 응답이 없어 연결을 종료했습니다. 다시 참가해주세요.');}},2000);
  },
- input(input,force=false){if(!this.active)return;const now=performance.now(),pulse=input.jump||input.light||input.heavy||input.special;if(!force&&!pulse&&now-this.lastSend<30)return;this.lastSend=now;this.send({type:'input',seq:++this.seq,input});},
+ input(input,force=false){if(!this.active)return;const now=performance.now(),pulse=input.jump||input.light||input.heavy||input.special||input.transform;if(!force&&!pulse&&now-this.lastSend<30)return;this.lastSend=now;this.send({type:'input',seq:++this.seq,input});},
  disconnect(){const ws=this.socket;this.socket=null;clearInterval(this.pingTimer);clearInterval(this.watchdog);this.active=false;this.slot=null;this.code='';if(ws){if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'leave'}));ws.close();}}
 };

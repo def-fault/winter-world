@@ -39,7 +39,7 @@ const peerOnline={
      if(m.version!==1||!Number.isInteger(m.character)||!WinterFight.roster[m.character])return this.peerLeft();
      this.players[1]={character:m.character,ready:true};this.lastSeq=-1;this.held={};this.pulses={};this.wire({type:'joined',code:this.code,slot:1});this.room();this.begin();
     }else if(m.type==='ready'&&this.players[1]){this.players[1].ready=true;this.room();this.begin();}
-    else if(m.type==='input'&&Number.isSafeInteger(m.seq)&&m.seq>this.lastSeq){this.lastSeq=m.seq;this.lastInput=Date.now();const input=m.input||{};for(const k of ['left','right','guard'])this.held[k]=input[k]===true;for(const k of ['jump','light','heavy','special'])if(input[k]===true)this.pulses[k]=true;}
+    else if(m.type==='input'&&Number.isSafeInteger(m.seq)&&m.seq>this.lastSeq){this.lastSeq=m.seq;this.lastInput=Date.now();const input=m.input||{};for(const k of ['left','right','guard'])this.held[k]=input[k]===true;for(const k of ['jump','light','heavy','special','transform'])if(input[k]===true)this.pulses[k]=true;}
    }else{
     if(m.type==='joined'){clearTimeout(this.timeout);this.active=true;this.emit('joined',m);}
     if(m.type==='room'){this.players=m.players;this.emit('room',m);}
@@ -65,8 +65,8 @@ const peerOnline={
   if(++this.tick%2===0)this.snapshot();
  },
  snapshot(){if(!this.sim)return;const m=this.sim;const packet={type:'state',tick:this.tick,events:m.events.splice(0),state:{mode:'online',time:m.time,phase:m.phase,wait:m.wait,round:m.round,wins:m.wins,winner:m.winner,hitstop:m.hitstop,fighters:m.fighters,shots:m.shots}};this.wire(packet);this.emit('state',structuredClone(packet));},
- input(input){if(!this.active)return;if(this.slot===0){for(const k of ['left','right','guard'])this.own[k]=input[k]===true;for(const k of ['jump','light','heavy','special'])if(input[k])this.ownPulse[k]=true;}
-  else {const now=performance.now();if(!input.jump&&!input.light&&!input.heavy&&!input.special&&now-(this.lastSend||0)<30)return;this.lastSend=now;this.wire({type:'input',seq:++this.seq,input});}
+ input(input){if(!this.active)return;if(this.slot===0){for(const k of ['left','right','guard'])this.own[k]=input[k]===true;for(const k of ['jump','light','heavy','special','transform'])if(input[k])this.ownPulse[k]=true;}
+  else {const now=performance.now();if(!input.jump&&!input.light&&!input.heavy&&!input.special&&!input.transform&&now-(this.lastSend||0)<30)return;this.lastSend=now;this.wire({type:'input',seq:++this.seq,input});}
  },
  send(m){if(m.type==='ready'&&this.slot===0){if(this.players[0])this.players[0].ready=true;this.room();this.begin();}else this.wire(m);},
  peerLeft(){const conn=this.conn;this.conn=null;clearInterval(this.pingTimer);clearInterval(this.timer);this.sim=null;this.held={};this.pulses={};if(conn)conn.close();if(this.slot===0&&this.active){this.players[1]=null;this.players[0].ready=true;this.emit('left','친구가 나갔습니다. 같은 초대 링크로 다시 참가할 수 있습니다.');this.room();}else this.fail('방장과 연결이 끊겼습니다. 방장이 게임을 열어 둔 뒤 다시 참가해주세요.');},

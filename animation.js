@@ -4,6 +4,7 @@
 const cycles={idle:[0,1,0,1],walk:[2,0,3,1],guard:[11],jump:[12,13],hurt:[14],ko:[15]};
 function pose(f){
  if(f.hp<=0)return 15;
+ if(f.transforming>0)return 8;
  if(f.stun>0)return f.blocked?11:14;
  if(f.attack){const {kind,t}=f.attack;
   if(kind==='light')return t<.09?4:t<.19?5:4;

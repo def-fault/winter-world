@@ -9,18 +9,23 @@ const roster=[
  {name:'플란 베르크',heightUnits:10,height:200,tag:'CLOCKWORK FLAME',color:'#b7df7a',speed:270,power:1.05,hp:100,skill:'타임 브레이크',type:'time',desc:'시간의 파동으로 상대를 늦추고 공격 기회를 만듭니다.'},
  {name:'호코아 그레네이드',heightUnits:9,height:180,tag:'SNOW DETONATOR',color:'#70e2cf',speed:300,power:.95,hp:100,skill:'스노우 버스트',type:'bomb',desc:'강력한 폭발 탄환으로 중거리에서 상대를 견제합니다.'}
 ];
+const golem={...roster[0],name:'아토믹 골렘',height:350,speed:165,power:1.65,type:'fusion',skill:'핵융합 펄스',color:'#ffdc45'};
+const slime={...roster[6],name:'니트로 슬라임',height:210,speed:315,power:1.12,type:'nitro',skill:'쿼드루페데즈',color:'#4ff2c5'};
+const forms={0:golem,6:slime};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 class Match{
  constructor(a,b,mode='cpu',difficulty=1){this.mode=mode;this.difficulty=difficulty;this.wins=[0,0];this.round=0;this.events=[];this.ids=[a,b];this.reset();}
- reset(){this.round++;this.time=60;this.phase='intro';this.wait=2;this.hitstop=0;this.shots=[];this.events=[];this.fighters=this.ids.map((id,i)=>({id,c:roster[id],x:i?870:330,y:0,vy:0,face:i?-1:1,hp:roster[id].hp,meter:35,cd:0,stun:0,slow:0,poison:0,guard:false,attack:null,combo:0,comboTime:0,ai:0,vx:0,flash:0,aiHold:{},aiState:'거리 탐색',animTime:0,moving:false,landing:0,blocked:false}));}
- attack(f,kind){if(f.cd>0||f.stun>0||f.guard)return false;const special=kind==='special';if(special&&f.meter<35)return false;if(special)f.meter-=35;f.attack={kind,t:0,hit:false};f.cd=special?.8:kind==='heavy'?.57:.34;this.events.push({type:'swing',kind});return true;}
+ reset(){this.round++;this.time=60;this.phase='intro';this.wait=2;this.hitstop=0;this.shots=[];this.events=[];this.fighters=this.ids.map((id,i)=>({id,c:roster[id],x:i?870:330,y:0,vy:0,face:i?-1:1,hp:roster[id].hp,meter:35,beast:40,formTime:0,transforming:0,nitroTime:0,nitroOwner:null,cd:0,stun:0,slow:0,poison:0,guard:false,attack:null,combo:0,comboTime:0,ai:0,vx:0,flash:0,aiHold:{},aiState:'거리 탐색',animTime:0,moving:false,landing:0,blocked:false}));}
+ transform(f){if(this.phase!=='fight'||!forms[f.id]||f.formTime>0||f.beast<100||f.stun>0||f.attack||f.cd>0||f.y>0||f.hp<=0)return false;f.beast=0;f.formTime=12;f.transforming=.65;f.c=forms[f.id];f.guard=false;f.vx=0;this.events.push({type:'transform',x:f.x,y:544-f.y-175,color:f.c.color,name:f.c.name});return true;}
+ attack(f,kind){if(f.cd>0||f.stun>0||f.guard||f.transforming>0)return false;const special=kind==='special';if(special&&f.meter<35)return false;if(special)f.meter-=35;f.attack={kind,t:0,hit:false};f.cd=special?.8:kind==='heavy'?.57:.34;this.events.push({type:'swing',kind});return true;}
  hit(f,t,damage,kind,dir,impact='special'){
   if(t.hp<=0)return;
   const blocked=t.guard&&t.y===0&&t.face===-dir;
   const counter=!blocked&&!!t.attack&&t.attack.t<(t.attack.kind==='light'?.09:.16);
   const strength=impact==='light'?1:impact==='heavy'?2:3;
-  const dealt=damage*(blocked?.15:counter?1.15:1);
+  const dealt=damage*(blocked?.15:counter?1.15:1)*(t.formTime>0&&t.id===0?.8:1);
   t.hp=Math.max(0,t.hp-dealt);
+  if(!!forms[f.id]&&!f.formTime)f.beast=clamp(f.beast+(blocked?4:13),0,100);if(!!forms[t.id]&&!t.formTime)t.beast=clamp(t.beast+dealt*.7,0,100);
   t.vx=dir*(blocked?100:strength===1?210:strength===2?430:530);
   f.vx=-dir*(blocked?65:strength===1?25:45);
   t.stun=blocked?.12:(strength===1?.19:strength===2?.32:.40)+(counter?.07:0);
@@ -28,7 +33,7 @@ class Match{
   if(!blocked)t.attack=null;
   this.hitstop=blocked?.035:strength===1?.065:strength===2?.105:.135;
   t.meter=clamp(t.meter+7,0,100);f.meter=clamp(f.meter+(blocked?3:9),0,100);
-  if(!blocked){f.combo=t.comboOwner===f.id&&f.comboTime>0?f.combo+1:1;t.comboOwner=f.id;f.comboTime=.65;if(kind==='ice')t.slow=2.3;if(kind==='time')t.slow=2.3;if(kind==='toxic')t.poison=2.4;}
+  if(!blocked){f.combo=t.comboOwner===f.id&&f.comboTime>0?f.combo+1:1;t.comboOwner=f.id;f.comboTime=.65;if(kind==='ice')t.slow=2.3;if(kind==='time')t.slow=2.3;if(kind==='toxic')t.poison=2.4;if(kind==='nitro'&&impact==='special'){t.nitroTime=1.1;t.nitroOwner=this.fighters.indexOf(f);this.events.push({type:'inject',x:t.x,y:544-t.y-t.c.height*.55,color:slime.color});}}
   this.events.push({type:blocked?'block':'hit',x:t.x-dir*25,y:544-t.y-t.c.height*.55,color:blocked?'#b8efff':f.c.color,combo:f.combo,damage:Math.round(dealt),strength,dir,counter});
  }
  aiInput(f,t,dt){
@@ -39,10 +44,10 @@ class Match{
   const dx=t.x-f.x,d=Math.abs(dx),toward=Math.sign(dx),aligned=Math.abs(t.y-f.y)<80;
   const input={},move=dir=>{input.left=dir<0;input.right=dir>0;};
   const retreat=()=>{const next=f.x-toward*65;if(next>80&&next<1120)move(-toward);else input.guard=true;};
-  const ranged=['toxic','ice','time','bomb'].includes(f.c.type);
+  const ranged=['toxic','ice','time','bomb','fusion'].includes(f.c.type);
   const ready=f.meter>=35;
   const end=t.attack?(t.attack.kind==='light'?.19:t.attack.kind==='heavy'?.29:.35):0;
-  const reach=t.attack?(t.attack.kind==='light'?125:t.attack.kind==='heavy'?165:t.c.type==='arc'?245:210):0;
+  const reach=t.attack?(t.attack.kind==='light'?125:t.attack.kind==='heavy'?165:['arc','nitro'].includes(t.c.type)?245:210):0;
   const danger=t.attack&&t.attack.t<end&&d<reach+28&&aligned;
   const incoming=this.shots.some(s=>this.fighters[s.owner]!==f&&(f.x-s.x)*s.dir>0&&Math.abs(f.x-s.x)<s.speed*.38&&Math.abs(f.y+100-s.y)<110);
   if(f.stun>0){f.aiState='피격';}
@@ -58,7 +63,7 @@ class Match{
    if(punish&&d<153){input[d<110?'light':'heavy']=true;f.aiState='빈틈 반격';}
    else if(d<90){if(roll<.45){input.light=true;f.aiState='근접 견제';}else{retreat();f.aiState='거리 벌리기';}}
    else if(ready&&ranged&&d>=245&&d<=570&&roll<.65){input.special=true;f.aiState='원거리 견제';}
-   else if(ready&&!ranged&&d>175&&d<(f.c.type==='arc'?230:300)&&roll<.38){input.special=true;f.aiState='진입 공격';}
+   else if(ready&&!ranged&&d>175&&d<(['arc','nitro'].includes(f.c.type)?230:300)&&roll<.38){input.special=true;f.aiState='진입 공격';}
    else if(d<153&&roll<.65){input[d<112?'light':'heavy']=true;f.aiState='사거리 견제';}
    else{
     const ideal=ranged&&ready?330:145;
@@ -69,14 +74,19 @@ class Match{
   }
   // Movement/guard persist between decisions; attacks are single pulses.
   f.aiHold={left:!!input.left,right:!!input.right,guard:!!input.guard};
+  if(forms[f.id]&&f.beast>=100&&!f.formTime&&d>200)input.transform=true;
   return input;
  }
  step(dt,inputs=[{},{}]){dt=Math.min(dt,.035);if(this.phase==='intro'){this.wait-=dt;if(this.wait<=0)this.phase='fight';return;}if(this.phase!=='fight')return;if(this.hitstop>0){this.hitstop=Math.max(0,this.hitstop-dt);return;}this.time=Math.max(0,this.time-dt);
- this.fighters.forEach((f,i)=>{const t=this.fighters[1-i],input=this.mode==='cpu'&&i===1?this.aiInput(f,t,dt):(inputs[i]||{});const oldX=f.x,oldY=f.y;f.animTime+=dt;f.flash=Math.max(0,f.flash-dt);f.x+=f.vx*dt;f.vx*=Math.exp(-11*dt);f.landing=Math.max(0,f.landing-dt);f.cd=Math.max(0,f.cd-dt);f.stun=Math.max(0,f.stun-dt);f.slow=Math.max(0,f.slow-dt);f.comboTime-=dt;f.meter=clamp(f.meter+dt*2,0,100);if(f.poison>0){f.poison-=dt;f.hp=Math.max(1,f.hp-dt*2);}f.face=t.x>=f.x?1:-1;f.guard=!!input.guard&&f.y===0&&!f.attack&&f.stun===0;
- if(!f.stun&&!f.attack){if(!f.guard)f.x+=((input.right?1:0)-(input.left?1:0))*f.c.speed*(f.slow>0?.5:1)*dt;if(input.jump&&f.y===0&&!f.guard)f.vy=630;if(input.special)this.attack(f,'special');else if(input.heavy)this.attack(f,'heavy');else if(input.light)this.attack(f,'light');}
+ this.fighters.forEach((f,i)=>{const t=this.fighters[1-i],input=this.mode==='cpu'&&i===1?this.aiInput(f,t,dt):(inputs[i]||{});const oldX=f.x,oldY=f.y;f.animTime+=dt;
+ if(f.formTime>0){f.formTime=Math.max(0,f.formTime-dt);if(!f.formTime){f.c=roster[f.id];f.transforming=0;this.events.push({type:'revert',x:f.x,y:544-f.y-150,color:'#c2e7ff'});}}else if(forms[f.id])f.beast=clamp(f.beast+dt*3,0,100);
+ if(f.nitroTime>0){f.nitroTime=Math.max(0,f.nitroTime-dt);if(!f.nitroTime&&f.hp>0){const owner=this.fighters[f.nitroOwner];this.hit(owner,f,18,'detonation',f.x>=owner.x?1:-1,'special');this.events.push({type:'detonate',x:f.x,y:544-f.y-f.c.height*.55,color:slime.color});f.nitroOwner=null;}}
+ f.transforming=Math.max(0,f.transforming-dt);f.flash=Math.max(0,f.flash-dt);f.x+=f.vx*dt;f.vx*=Math.exp(-11*dt);f.landing=Math.max(0,f.landing-dt);f.cd=Math.max(0,f.cd-dt);f.stun=Math.max(0,f.stun-dt);f.slow=Math.max(0,f.slow-dt);f.comboTime-=dt;f.meter=clamp(f.meter+dt*2,0,100);if(f.poison>0){f.poison-=dt;f.hp=Math.max(1,f.hp-dt*2);}f.face=t.x>=f.x?1:-1;f.guard=!!input.guard&&f.y===0&&!f.attack&&f.stun===0;
+ if(input.transform)this.transform(f);
+ if(!f.stun&&!f.attack&&!f.transforming){if(!f.guard)f.x+=((input.right?1:0)-(input.left?1:0))*f.c.speed*(f.slow>0?.5:1)*dt;if(input.jump&&f.y===0&&!f.guard)f.vy=630;if(input.special)this.attack(f,'special');else if(input.heavy)this.attack(f,'heavy');else if(input.light)this.attack(f,'light');}
  f.y=Math.max(0,f.y+f.vy*dt);f.vy-=1650*dt;if(f.y===0){f.vy=0;if(oldY>0)f.landing=.09;}
  if(f.attack){const a=f.attack;a.t+=dt;const special=a.kind==='special',type=f.c.type;const rush=special&&(type==='rush'||type==='dash');if(rush&&a.t<.3)f.x+=f.face*700*dt;
- if(!a.hit&&a.t> (a.kind==='light'?.09:.16)&&a.t<(a.kind==='light'?.19:a.kind==='heavy'?.29:.35)){const projectile=special&&['toxic','ice','bomb','time'].includes(type);if(projectile){this.shots.push({owner:i,x:f.x+f.face*50,y:f.y+100,dir:f.face,life:2,speed:type==='bomb'?410:540,type,color:f.c.color,damage:(type==='bomb'?24:18)*f.c.power});a.hit=true;}else{const range=special?(type==='arc'?245:180):a.kind==='heavy'?165:125;if(Math.abs(t.x-f.x)<range&&Math.abs(t.y-f.y)<105&&(t.x-f.x)*f.face>=0){this.hit(f,t,(special?23:a.kind==='heavy'?15:8)*f.c.power,type,f.face,a.kind);a.hit=true;}}}
+ if(!a.hit&&a.t> (a.kind==='light'?.09:.16)&&a.t<(a.kind==='light'?.19:a.kind==='heavy'?.29:.35)){const projectile=special&&['toxic','ice','bomb','time','fusion'].includes(type);if(projectile){this.shots.push({owner:i,x:f.x+f.face*50,y:f.y+100,dir:f.face,life:2,speed:type==='bomb'?410:540,type,color:f.c.color,damage:(type==='fusion'?25:type==='bomb'?24:18)*f.c.power});a.hit=true;}else{const range=special?(type==='arc'||type==='nitro'?245:180):a.kind==='heavy'?165:125;if(Math.abs(t.x-f.x)<range&&Math.abs(t.y-f.y)<105&&(t.x-f.x)*f.face>=0){this.hit(f,t,(special?23:a.kind==='heavy'?15:8)*f.c.power,type,f.face,a.kind);a.hit=true;}}}
  if(a.t>(special?.55:a.kind==='heavy'?.48:.32))f.attack=null;}
  f.x=clamp(f.x,65,1135);f.moving=Math.abs(f.x-oldX)>.1&&!f.attack&&!f.stun;
  });
@@ -85,5 +95,5 @@ class Match{
  if(a.hp<=0||b.hp<=0||this.time<=0){const va=a.hp/a.c.hp,vb=b.hp/b.c.hp;this.winner=Math.abs(va-vb)<.00001?-1:va>vb?0:1;if(this.winner>=0)this.wins[this.winner]++;this.phase=this.wins.some(w=>w>=2)?'finished':'round';this.events.push({type:'finish'});}
  }
 }
-const api={roster,Match};if(typeof module!=='undefined')module.exports=api;root.WinterFight=api;
+const api={roster,golem,slime,forms,Match};if(typeof module!=='undefined')module.exports=api;root.WinterFight=api;
 })(typeof window!=='undefined'?window:globalThis);
