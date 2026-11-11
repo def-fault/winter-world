@@ -1,0 +1,10 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>윈터 월드 · 캐릭터 키 비교</title><link rel="stylesheet" href="style.css"></head><body><header><a class="brand" href="index.html">W / W</a><span class="edition">CHARACTER HEIGHT REFERENCE</span><a class="quiet" href="sprites.html">스프라이트 작업실</a></header><main><div class="eyebrow">SAME GROUND. DIFFERENT HEIGHTS.</div><h1>캐릭터 키 비교</h1><p>제공해주신 크기표의 8 : 9 : 10 : 11 : 13 : 14 : 15 비율을 적용했습니다.</p><canvas id="lineup" width="1400" height="490" style="margin-top:30px;border:1px solid #344658"></canvas><p class="footnote">게임과 동일한 스프라이트·키 설정입니다. 크기표의 cm 표기를 상대 비율로 사용합니다.</p></main><script src="engine.js"></script><script src="assets/sprites/atlas.js"></script><script src="animation.js"></script><script>
+const ctx=document.getElementById('lineup').getContext('2d');
+const order=[2,5,6,3,4,1,0],images=order.map(id=>{const im=new Image();im.src=`assets/sprites/fighter-${id}.png`;return im;});
+Promise.all(images.map(im=>new Promise(resolve=>{if(im.complete&&im.naturalWidth)resolve();else im.onload=resolve;}))).then(()=>{
+ctx.fillStyle='#142337';ctx.fillRect(0,0,1400,490);
+for(const unit of [8,9,10,11,13,14,15]){ctx.strokeStyle='#aeeadd22';ctx.beginPath();ctx.moveTo(0,405-unit*20);ctx.lineTo(1400,405-unit*20);ctx.stroke();}
+ctx.strokeStyle='#aeeadd';ctx.beginPath();ctx.moveTo(0,405);ctx.lineTo(1400,405);ctx.stroke();
+order.forEach((id,i)=>{const c=WinterFight.roster[id],x=100+i*200;FighterAnimation.draw(ctx,images[i],SPRITE_ATLASES[id],0,x,405,c.height);ctx.textAlign='center';ctx.fillStyle=c.color;ctx.font='bold 20px "Malgun Gothic",sans-serif';ctx.fillText(`${c.heightUnits}`,x,385-c.height);ctx.fillStyle='#e2edf6';ctx.font='14px "Malgun Gothic",sans-serif';ctx.fillText(c.name,x,448);});
+});
+</script></body></html>
